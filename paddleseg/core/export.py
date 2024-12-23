@@ -124,29 +124,16 @@ def export(args, model=None, save_dir=None, use_ema=False):
     with open(yml_file, 'w') as file:
         yaml.dump(deploy_info, file)
 
-    paddle_version = version.parse(paddle.__version__)
-    if (paddle_version >= version.parse('3.0.0b2')
-            or paddle_version == version.parse('0.0.0')) and os.environ.get(
-                "FLAGS_enable_pir_api", None) not in ["0", "False"]:
-        save_path = os.path.dirname(inference_model_path)
-        for enable_pir in [True, False]:
-            if not enable_pir:
-                save_path_no_pir = os.path.join(save_path, save_name)
-                model.forward.rollback()
-                with paddle.pir_utils.OldIrGuard():
-                    model = paddle.jit.to_static(model, input_spec=input_spec)
-                    paddle.jit.save(model, save_path_no_pir)
-            else:
-                save_path_pir = os.path.join(
-                    os.path.dirname(save_path),
-                    f"{os.path.basename(save_path)}_pir", save_name)
-                paddle.jit.save(model, save_path_pir)
-                shutil.copy(
-                    yml_file,
-                    os.path.join(os.path.dirname(save_path_pir),
-                                 os.path.basename(yml_file)),
-                )
-    else:
+    if cfg.dic.get('export_with_pir', False):
+        paddle_version = version.parse(paddle.__version__)
+        assert (paddle_version >= version.parse('3.0.0b2')
+                or paddle_version == version.parse('0.0.0')) and os.environ.get(
+                    "FLAGS_enable_pir_api", None) not in ["0", "False"]
         paddle.jit.save(model, inference_model_path)
+    else:
+        model.forward.rollback()
+        with paddle.pir_utils.OldIrGuard():
+            model = paddle.jit.to_static(model, input_spec=input_spec)
+            paddle.jit.save(model, inference_model_path)
 
     logger.info(f'The inference model is saved in {save_dir}')
