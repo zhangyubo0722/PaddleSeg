@@ -124,16 +124,20 @@ def export(args, model=None, save_dir=None, use_ema=False):
     with open(yml_file, 'w') as file:
         yaml.dump(deploy_info, file)
 
+    paddle_version = version.parse(paddle.__version__)
     if cfg.dic.get('export_with_pir', False):
-        paddle_version = version.parse(paddle.__version__)
         assert (paddle_version >= version.parse('3.0.0b2')
                 or paddle_version == version.parse('0.0.0')) and os.environ.get(
                     "FLAGS_enable_pir_api", None) not in ["0", "False"]
         paddle.jit.save(model, inference_model_path)
     else:
-        model.forward.rollback()
-        with paddle.pir_utils.OldIrGuard():
-            model = paddle.jit.to_static(model, input_spec=input_spec)
+        if paddle_version >= version.parse(
+                '3.0.0b2') or paddle_version == version.parse('0.0.0'):
+            model.forward.rollback()
+            with paddle.pir_utils.OldIrGuard():
+                model = paddle.jit.to_static(model, input_spec=input_spec)
+                paddle.jit.save(model, inference_model_path)
+        else:
             paddle.jit.save(model, inference_model_path)
 
     logger.info(f'The inference model is saved in {save_dir}')
